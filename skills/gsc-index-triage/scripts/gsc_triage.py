@@ -66,6 +66,11 @@ def parse_date(s: str | None) -> dt.date | None:
         return None
 
 
+def tilde(p) -> str:
+    s, home = str(p), str(pathlib.Path.home())
+    return "~" + s[len(home):] if s.startswith(home) else s
+
+
 def die(msg: str) -> None:
     print(f"error: {msg}", file=sys.stderr)
     sys.exit(2)
@@ -417,7 +422,7 @@ def cmd_inspect(a, client, site, sd):
     snap = {"site": site, "date": str(today()), "sitemaps": roots, "urls": merged}
     save_json(sd / "snapshots" / f"{today()}.json", snap)
     summarize(snap, prev if prev_name != str(today()) else {})
-    print(f"\nsnapshot: {sd / 'snapshots' / (str(today()) + '.json')}")
+    print(f"\nsnapshot: {tilde(sd / 'snapshots' / (str(today()) + '.json'))}")
     print("next: `triage` to pick today's indexing requests")
 
 
@@ -519,14 +524,19 @@ def cmd_verify(a, client, site, sd):
         print(f"nothing to verify (requests must be at least {a.min_age} days old)")
         return
     res = inspect_many(client, site, due, workers=a.workers)
+    landed = 0
     for u in due:
         rec = res[u]
         st = rec.get("status")
         log[u]["verified"] = "indexed" if st == "indexed" else rec.get("coverageState", st)
         log[u]["checked"] = str(now)
         days = (now - dt.date.fromisoformat(log[u]["requested"])).days
-        mark = "indexed" if st == "indexed" else f"not yet: {rec.get('coverageState', rec.get('error', '?'))}"
-        print(f"{mark:<45} {days:>3}d  {u}")
+        if st == "indexed":
+            landed += 1
+            print(f"  indexed   {days:>2}d  {u}")
+        else:
+            print(f"  not yet   {days:>2}d  {u}  ({rec.get('coverageState', rec.get('error', '?'))})")
+    print(f"{landed}/{len(due)} requested URLs indexed")
     save_json(sd / "requests.json", log)
 
 

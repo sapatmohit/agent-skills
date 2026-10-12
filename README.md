@@ -52,6 +52,8 @@ flowchart LR
 
 ### What it looks like
 
+![gsc-index-triage demo: inspect, triage, verify, report](assets/gsc-demo.gif)
+
 ```text
 $ gsc_triage.py inspect
 sc-domain:example.com: 107 URLs from 3 sitemap(s); inspecting 107
@@ -76,8 +78,9 @@ Fix, don't request (2): requesting won't help until these are fixed
       Excluded by 'noindex' tag: page has noindex; remove it from the sitemap, or drop the noindex if it should rank
 
 $ gsc_triage.py verify
-indexed                                         3d  https://docs.example.com/cli/check
-not yet: Crawled - currently not indexed        3d  https://example.com/blog/icu-plurals/
+  indexed    3d  https://docs.example.com/cli/check
+  not yet    3d  https://example.com/blog/icu-plurals/  (Crawled - currently not indexed)
+1/2 requested URLs indexed
 
 $ gsc_triage.py report --exclude-query 'yourbrand'
 sc-domain:example.com  2026-09-12 .. 2026-10-09  vs  2026-08-15 .. 2026-09-11
