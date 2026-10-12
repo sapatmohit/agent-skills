@@ -146,3 +146,16 @@ Issues and PRs welcome.
 ## License
 
 [MIT](LICENSE) © Mohit Sapat
+
+---
+
+<div align="center">
+
+Made by **Mohit Sapat**
+
+[![Website](https://img.shields.io/badge/mohitsapat.me-000000?logo=googlechrome&logoColor=white)](https://mohitsapat.me)
+[![X](https://img.shields.io/badge/@mohitsapat18-000000?logo=x&logoColor=white)](https://x.com/mohitsapat18)
+[![LinkedIn](https://img.shields.io/badge/mohitsapat18-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/in/mohitsapat18/)
+[![GitHub](https://img.shields.io/badge/sapatmohit-181717?logo=github&logoColor=white)](https://github.com/sapatmohit)
+
+</div>
