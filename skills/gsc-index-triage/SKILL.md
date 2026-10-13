@@ -29,7 +29,7 @@ Alternative without a key file: `gcloud auth application-default login --scopes=
 
 1. **`inspect`** URL-inspects every URL in the property's submitted sitemaps (or `--sitemap URL`, repeatable; `--urls-file`). It runs 8 at a time, about 1 minute per 60 URLs, and saves a dated snapshot. It also prints what was newly indexed and what dropped out since the last snapshot. Quota is 2,000 inspections per day per property: on big sites use `--skip-indexed` (re-checks only URLs that weren't indexed last time) or `--max N`.
 2. **`triage --quota N`** prints three lists:
-   - **Request today**: the top N requestable URLs. Ask the user how many requests they have left today; the default is 10.
+   - **Request today**: the top N requestable URLs. Ask the user how many requests they have left today; the default is 10. The request quota appears to reset on a rolling 24 hours from when the requests were used, not at midnight. If Search Console still says "Quota exceeded" the next morning, have the user wait until 24 hours after yesterday's first request.
    - **Fix, don't request**: pages with redirects, noindex, 404/soft 404, robots blocks or canonicals pointing elsewhere. Requesting indexing does nothing for these. Each comes with a hint; fix the cause, usually in the sitemap or the page.
    - **Later**: the remaining URLs, ranked.
 
