@@ -8,6 +8,7 @@ Works with Claude Code, Codex, Cursor, Gemini CLI, GitHub Copilot and [40+ other
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![skills.sh](https://img.shields.io/badge/skills.sh-sapatmohit%2Fagent--skills-black)](https://skills.sh/sapatmohit/agent-skills)
+[![PyPI](https://img.shields.io/pypi/v/gsc-triage?label=pypi%20gsc-triage)](https://pypi.org/project/gsc-triage/)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)
 
 ```bash
@@ -60,10 +61,9 @@ flowchart LR
 `--demo` runs every command on a made-up site with a week of history. No key, nothing sent anywhere:
 
 ```bash
-git clone https://github.com/sapatmohit/agent-skills && cd agent-skills/skills/gsc-index-triage
-uv run scripts/gsc_triage.py --demo inspect
-uv run scripts/gsc_triage.py --demo triage
-uv run scripts/gsc_triage.py --demo card
+uvx gsc-triage --demo inspect
+uvx gsc-triage --demo triage
+uvx gsc-triage --demo card
 ```
 
 `card` makes this, ready to post:
@@ -169,12 +169,14 @@ all set. next: `inspect`
 
 ### Use it without an agent
 
-It's a single Python file with three dependencies, declared inline so that [`uv`](https://docs.astral.sh/uv/) installs them on the fly:
+It's on PyPI as [`gsc-triage`](https://pypi.org/project/gsc-triage/):
 
 ```bash
-uv run skills/gsc-index-triage/scripts/gsc_triage.py inspect
-# or: pip install google-auth requests pillow && python3 skills/gsc-index-triage/scripts/gsc_triage.py inspect
+uvx gsc-triage doctor          # run without installing (needs uv)
+pip install gsc-triage         # or install it: gives you the `gsc-triage` command
 ```
+
+From a clone it's a single Python file with its dependencies declared inline, so `uv run skills/gsc-index-triage/scripts/gsc_triage.py inspect` works too.
 
 State (snapshots, the request log, link counts and the IndexNow key) lives in `~/.local/state/gsc-triage/<property>/`.
 

@@ -7,7 +7,7 @@ description: Find which pages Google hasn't indexed and decide which deserve tod
 
 Search Console limits manual "Request indexing" to roughly 10 URLs per property per day (sometimes fewer), and the API cannot request indexing at all. This skill makes those few clicks count: it finds every not-indexed URL, explains which ones a request won't fix, and hands the user a short, ranked list.
 
-Script: `scripts/gsc_triage.py` (Python 3.9+). Run it with `uv run scripts/gsc_triage.py <command>` so that uv installs its dependencies (`google-auth`, `requests`, and `pillow` for `card`). Without uv, run `pip install google-auth requests pillow` and use `python3`.
+Script: `scripts/gsc_triage.py` (Python 3.9+). Run it with `uv run scripts/gsc_triage.py <command>` so that uv installs its dependencies (`google-auth`, `requests`, and `pillow` for `card`). Without uv, run `pip install google-auth requests pillow` and use `python3`. It's also on PyPI: `uvx gsc-triage <command>` or `pip install gsc-triage` gives the same CLI as `gsc-triage`, which helps when the user wants to run it outside the agent (e.g. from cron).
 
 ## Setup (once per user)
 
