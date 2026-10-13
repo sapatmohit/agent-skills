@@ -1,0 +1,16 @@
+{
+  "name": "sapatmohit",
+  "owner": {
+    "name": "Mohit Sapat"
+  },
+  "metadata": {
+    "description": "Skills for coding agents by Mohit Sapat"
+  },
+  "plugins": [
+    {
+      "name": "agent-skills",
+      "source": "./",
+      "description": "gsc-index-triage and other skills that do real work"
+    }
+  ]
+}
