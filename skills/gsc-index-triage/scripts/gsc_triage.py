@@ -31,7 +31,7 @@ credential only sees one).
 """
 from __future__ import annotations
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 import argparse
 import datetime as dt
@@ -239,7 +239,11 @@ def parse_sitemap(xml_bytes: bytes) -> tuple[list[tuple[str, str | None]], list[
     return urls, children
 
 
-def fetch_sitemaps(client, roots: list[str]) -> dict[str, str | None]:
+def fetch_sitemaps(client, roots: list[str],
+                   sources: dict[str, list[str]] | None = None) -> dict[str, str | None]:
+    """URL -> lastmod across all sitemaps (following indexes). A URL listed in
+    several sitemaps is kept once with its newest lastmod; `sources`, if given,
+    collects which sitemaps list each URL."""
     seen, out, queue = set(), {}, list(roots)
     while queue:
         sm = queue.pop(0)
@@ -256,7 +260,11 @@ def fetch_sitemaps(client, roots: list[str]) -> dict[str, str | None]:
             continue
         queue.extend(children)
         for u, lm in urls:
-            out.setdefault(u, lm)
+            old = out.get(u)
+            if u not in out or (parse_date(lm) or dt.date.min) > (parse_date(old) or dt.date.min):
+                out[u] = lm
+            if sources is not None and sm not in sources.setdefault(u, []):
+                sources[u].append(sm)
     return out
 
 
@@ -501,7 +509,8 @@ def cmd_inspect(a, client, site, sd):
     roots = a.sitemap or property_sitemaps(client, site)
     if not roots and not a.urls_file:
         die("no sitemaps submitted for this property; pass --sitemap URL or --urls-file")
-    urls: dict[str, str | None] = fetch_sitemaps(client, roots) if roots else {}
+    sources: dict[str, list[str]] = {}
+    urls: dict[str, str | None] = fetch_sitemaps(client, roots, sources) if roots else {}
     if a.urls_file:
         for line in pathlib.Path(a.urls_file).read_text().splitlines():
             if line.strip() and not line.startswith("#"):
@@ -519,7 +528,11 @@ def cmd_inspect(a, client, site, sd):
               file=sys.stderr)
         todo = todo[:INSPECT_DAILY_QUOTA]
 
-    print(f"{site}: {len(urls)} URLs from {len(roots)} sitemap(s); inspecting {len(todo)}")
+    n_maps = len({sm for v in sources.values() for sm in v}) or len(roots)
+    print(f"{site}: {len(urls)} URLs from {n_maps} sitemap(s); inspecting {len(todo)}")
+    shared = sum(len(v) > 1 for v in sources.values())
+    if shared:
+        print(f"  {shared} URLs are listed in more than one sitemap: inspected once, newest lastmod kept")
     results = inspect_many(client, site, todo, workers=a.workers)
     # Carry forward unchanged results for URLs skipped this run.
     merged = {u: dict(prev.get("urls", {}).get(u, {}), carried=True)
@@ -527,7 +540,14 @@ def cmd_inspect(a, client, site, sd):
     for u, rec in results.items():
         rec["lastmod"] = urls.get(u)
         merged[u] = rec
+    for u, rec in merged.items():
+        if sources.get(u):
+            rec["listed_in"] = sources[u]
     snap = {"site": site, "date": str(today()), "sitemaps": roots, "urls": merged}
+    groups = sitemap_variants(snap)
+    if groups:
+        print(f"  {len(groups)} pages are listed under more than one URL "
+              "(trailing slash, www, http/https); see `fixes`")
     save_json(sd / "snapshots" / f"{today()}.json", snap)
     # Requested URLs that turned up indexed count as verified; no extra inspections.
     log = load_json(sd / "requests.json", {})
@@ -933,6 +953,34 @@ def plan_fixes(client, snap: dict, follow: bool = True) -> list[dict]:
     return plan
 
 
+def variant_key(u: str) -> str:
+    """Same page, ignoring scheme, www., trailing slash and fragment."""
+    k = norm_url(u)
+    return k[4:] if k.startswith("www.") else k
+
+
+def sitemap_variants(snap: dict) -> list[dict]:
+    """Pages the sitemaps list under several URLs (e.g. /a and /a/, www and
+    bare host), with the one to keep when the inspection data says which."""
+    urls = snap.get("urls", {})
+    by_key: dict[str, list[str]] = {}
+    for u in urls:
+        by_key.setdefault(variant_key(u), []).append(u)
+    out = []
+    for us in by_key.values():
+        if len(us) < 2:
+            continue
+        keep = next((u for u in us if urls[u].get("status") == "indexed"), None)
+        if not keep:  # the variant Google picked as canonical, if it's one of them
+            canon = {norm_url(c) for u in us for c in (urls[u].get("googleCanonical"),
+                                                       urls[u].get("userCanonical")) if c}
+            keep = next((u for u in us if norm_url(u) in canon), None)
+        out.append({"keep": keep, "variants": [
+            {"url": u, "status": urls[u].get("status"), "coverage": urls[u].get("coverageState"),
+             "listed_in": urls[u].get("listed_in", [])} for u in us]})
+    return out
+
+
 def sitemap_xml(entries: list[tuple[str, str | None]]) -> str:
     from xml.sax.saxutils import escape
     rows = []
@@ -949,12 +997,15 @@ def cmd_fixes(a, client, site, sd):
     if not snap:
         die("no snapshot yet; run `inspect` first")
     plan = plan_fixes(client, snap, follow=not a.no_follow)
+    variants = sitemap_variants(snap)
+    drop = {v["url"] for g in variants if g["keep"] for v in g["variants"] if v["url"] != g["keep"]}
+    plan = [p for p in plan if p["url"] not in drop]  # shown under "Sitemaps disagree" instead
     if a.write:
         by_url = {p["url"]: p for p in plan}
         out, seen = [], set()
         for u, r in snap["urls"].items():
             p = by_url.get(u)
-            if p and p["action"] == "remove":
+            if (p and p["action"] == "remove") or u in drop:
                 continue
             loc = p["target"] if p and p["action"] == "replace" else u
             if norm_url(loc) not in seen:
@@ -963,10 +1014,23 @@ def cmd_fixes(a, client, site, sd):
         pathlib.Path(a.write).write_text(sitemap_xml(out))
         print(f"wrote {a.write}: {len(out)} URLs (was {len(snap['urls'])})", file=sys.stderr)
     if a.json:
-        print(json.dumps(plan, indent=2))
+        print(json.dumps({"fixes": plan, "variants": variants}, indent=2))
         return
-    if not plan:
+    if not plan and not variants:
         print(f"Snapshot {name}: nothing to fix")
+        return
+    if variants:
+        print(f"Sitemaps disagree ({len(variants)}): the same page is listed under different URLs. "
+              "List one form only, the one Google indexes")
+        for g in variants:
+            for v in g["variants"]:
+                tag = "keep" if v["url"] == g["keep"] else "drop" if g["keep"] else "    "
+                where = ", ".join(sm.rsplit("/", 1)[-1] or sm for sm in v["listed_in"]) or "?"
+                print(f"  {tag}  {v['url']}  ({v['coverage'] or v['status']}; in {where})")
+            if not g["keep"]:
+                print("        pick one canonical form, redirect the other to it")
+        print()
+    if not plan:
         return
     groups = [("remove", "Remove from the sitemap (or fix the page if it should rank)"),
               ("replace", "Replace in the sitemap"), ("check", "Check by hand")]
@@ -988,15 +1052,26 @@ def cmd_fixes(a, client, site, sd):
 def cmd_indexnow(a, client, site, sd):
     path = sd / "indexnow.json"
     cfg = load_json(path, {})
+    if a.use_key or a.key_path:
+        if a.use_key:
+            if not re.fullmatch(r"[A-Za-z0-9-]{8,128}", a.use_key):
+                die("an IndexNow key is 8-128 characters: letters, digits and dashes")
+            cfg["key"] = a.use_key
+        if a.key_path:
+            cfg["key_path"] = "/" + a.key_path.lstrip("/")
+        save_json(path, cfg)
+        a.setup = True
     if not cfg.get("key"):
         cfg["key"] = secrets.token_hex(16)
         save_json(path, cfg)
         a.setup = True
     key = cfg["key"]
+    key_path = cfg.get("key_path") or f"/{key}.txt"
     if a.setup:
-        print(f"IndexNow key: {key}\n\nServe a plain-text file at the root of every host in the "
-              f"sitemap, containing only the key:\n  https://<host>/{key}.txt\n(in most frameworks: "
-              f"public/{key}.txt or static/{key}.txt). Deploy it, then run `indexnow --dry-run`.\n\n"
+        print(f"IndexNow key: {key}\n\nServe a plain-text file at {key_path} on every host in the "
+              f"sitemap, containing only the key:\n  https://<host>{key_path}\n(in most frameworks: "
+              f"public{key_path} or static{key_path}). Deploy it, then run `indexnow --dry-run`.\n"
+              "Already have a key? `indexnow --use-key KEY --key-path /indexnow-key.txt`.\n\n"
               "IndexNow reaches Bing, Yandex, Seznam, Naver and Yep (and the AI assistants that "
               "search through Bing). Google doesn't use it.")
         return
@@ -1017,7 +1092,7 @@ def cmd_indexnow(a, client, site, sd):
 
     total = 0
     for (scheme, host), us in by_host.items():
-        key_url = f"{scheme}://{host}/{key}.txt"
+        key_url = f"{scheme}://{host}{key_path}"
         try:
             status, _, body = client.get_url(key_url)
             found = status == 200 and body.decode("utf-8", "replace").strip() == key
@@ -1307,6 +1382,10 @@ DEMO_QUERIES = [("icu messageformat", "/blog/icu-messageformat/", 8.6, 15, 0),
                 ("next-intl vs react-i18next", "/blog/next-intl-vs-react-i18next/", 4.8, 37, 3),
                 ("pluralization rules", "/blog/pluralization-rules/", 14.5, 22, 0),
                 ("currency format javascript", "/blog/currency-formatting/", 3.1, 120, 9)]
+# A second sitemap that overlaps the first: same blog URLs (one with an older
+# lastmod) plus two variants of pages already listed.
+DEMO_VARIANTS = {"https://demo.example/blog/hreflang-guide": DEMO_BASE + "/blog/hreflang-guide/",
+                 "https://www.demo.example/pricing/": DEMO_BASE + "/pricing/"}
 
 
 class DemoClient:
@@ -1321,6 +1400,9 @@ class DemoClient:
         return str(today() - dt.timedelta(days=ago))
 
     def inspect(self, url: str) -> dict:
+        if url in DEMO_VARIANTS:
+            return {"verdict": "NEUTRAL", "coverageState": "Page with redirect",
+                    "googleCanonical": DEMO_VARIANTS[url]}
         _, st, lm, _, ex = self.pages.get(url, ("", "unknown", 0, 0, {}))
         if st == "landed":
             if self.before:
@@ -1390,7 +1472,18 @@ class DemoClient:
 
     def get_url(self, url: str, timeout: int = 30) -> tuple[int, str, bytes]:
         if url == DEMO_BASE + "/sitemap.xml":
+            return 200, url, ('<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/'
+                              'schemas/sitemap/0.9"><sitemap><loc>' + DEMO_BASE + '/sitemap-pages.xml'
+                              '</loc></sitemap><sitemap><loc>' + DEMO_BASE + '/sitemap-blog.xml'
+                              '</loc></sitemap></sitemapindex>').encode()
+        if url == DEMO_BASE + "/sitemap-pages.xml":
             return 200, url, sitemap_xml([(u, self._day(lm)) for u, (_, _, lm, _, _) in self.pages.items()]).encode()
+        if url == DEMO_BASE + "/sitemap-blog.xml":
+            blog = [(u, self._day(lm + 30)) for u, (p, _, lm, _, _) in self.pages.items()
+                    if p.startswith("/blog/")]
+            return 200, url, sitemap_xml(blog + [(u, None) for u in DEMO_VARIANTS]).encode()
+        if url in DEMO_VARIANTS:
+            return 200, DEMO_VARIANTS[url], b"<html></html>"
         if url.endswith(".txt"):  # IndexNow key file: pretend it's deployed
             return 200, url, url.rsplit("/", 1)[1][:-4].encode()
         p, st, _, _, ex = self.pages.get(url, ("", "gone", 0, 0, {}))
@@ -1507,6 +1600,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     n = sub.add_parser("indexnow")
     n.add_argument("--setup", action="store_true", help="show the key and how to host it")
+    n.add_argument("--use-key", metavar="KEY", help="use an existing IndexNow key instead of a new one")
+    n.add_argument("--key-path", metavar="PATH",
+                   help="where the key file is served, e.g. /indexnow-key.txt (default /<key>.txt)")
     n.add_argument("--changed", action="store_true",
                    help="only URLs never submitted or with a newer lastmod")
     n.add_argument("--dry-run", action="store_true")

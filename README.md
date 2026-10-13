@@ -127,8 +127,8 @@ Striking distance (position 4-20, >= 10 impressions): improve these pages first
 | `stats` | Median time to index, requests stuck after 14 days, traffic earned since indexing |
 | `daily` | `inspect --skip-indexed` + `verify` + `triage`, for a morning cron job |
 | `links` | Find sitemap pages that no other page links to (orphans) |
-| `fixes` | Turn "fix, don't request" URLs into sitemap edits (`--write sitemap.xml`, `--json`) |
-| `indexnow` | Submit URLs to Bing, Yandex, Seznam, Naver and Yep (`--setup`, `--changed`, `--dry-run`) |
+| `fixes` | Turn "fix, don't request" URLs into sitemap edits, and flag pages listed under several URLs across sitemaps (`--write sitemap.xml`, `--json`) |
+| `indexnow` | Submit URLs to Bing, Yandex, Seznam, Naver and Yep (`--setup`, `--changed`, `--dry-run`, `--use-key`, `--key-path`) |
 | `card` | Shareable 16:9 PNG of your index coverage (`--out`) |
 | `report` | Compare performance with the previous period, plus striking-distance and zero-click queries (`--days`, `--exclude-query`) |
 | `sitemaps` | List sitemaps with last-download date, or resubmit them (`--submit URL`) |

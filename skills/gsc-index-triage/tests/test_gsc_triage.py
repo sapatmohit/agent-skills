@@ -151,7 +151,10 @@ class Demo(unittest.TestCase):
         return out.getvalue()
 
     def test_flow(self):
-        self.assertIn("newly indexed since", self.run_cmd("inspect"))
+        out = self.run_cmd("inspect")
+        self.assertIn("newly indexed since", out)
+        self.assertIn("listed in more than one sitemap", out)
+        self.assertIn("Sitemaps disagree (2)", self.run_cmd("fixes"))
         triage = self.run_cmd("triage")
         self.assertIn("2/10 manual requests used", triage)
         self.assertIn("react-i18n-guide", triage)
@@ -172,6 +175,55 @@ class Demo(unittest.TestCase):
         self.assertIn("IndexNow key", self.run_cmd("indexnow"))
         self.assertIn("URLs submitted", self.run_cmd("indexnow"))
         self.assertIn("nothing new", self.run_cmd("indexnow", "--changed"))
+
+    def test_indexnow_existing_key(self):
+        self.run_cmd("inspect")
+        out = self.run_cmd("indexnow", "--use-key", "abcdef0123456789", "--key-path", "indexnow-key.txt")
+        self.assertIn("https://<host>/indexnow-key.txt", out)
+        cfg = g.load_json(g.state_dir(g.DEMO_SITE, self.tmp) / "indexnow.json", {})
+        self.assertEqual((cfg["key"], cfg["key_path"]), ("abcdef0123456789", "/indexnow-key.txt"))
+
+
+class Overlap(unittest.TestCase):
+    """Several sitemaps listing the same pages."""
+
+    class Fake:
+        MAPS = {
+            "https://example.com/a.xml": b'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+                b"<url><loc>https://example.com/p/</loc><lastmod>2026-09-01</lastmod></url></urlset>",
+            "https://example.com/b.xml": b'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+                b"<url><loc>https://example.com/p/</loc><lastmod>2026-10-01</lastmod></url>"
+                b"<url><loc>https://example.com/p</loc></url></urlset>",
+        }
+
+        def get_url(self, url, timeout=30):
+            return 200, url, self.MAPS[url]
+
+    def test_merge_keeps_newest_lastmod_and_sources(self):
+        sources = {}
+        urls = g.fetch_sitemaps(self.Fake(), list(self.Fake.MAPS) * 2, sources)
+        self.assertEqual(urls["https://example.com/p/"], "2026-10-01")
+        self.assertEqual(len(sources["https://example.com/p/"]), 2)
+
+    def test_variant_key(self):
+        keys = {g.variant_key(u) for u in ("https://example.com/p/", "http://www.example.com/p",
+                                           "https://WWW.example.com/p#x")}
+        self.assertEqual(len(keys), 1)
+        self.assertNotEqual(g.variant_key("https://example.com/p?x=1"), g.variant_key("https://example.com/p"))
+
+    def test_variants_keep_indexed_or_canonical(self):
+        snap = {"urls": {
+            "https://example.com/p/": {"status": "indexed"},
+            "https://example.com/p": {"status": "fix"},
+            "https://example.com/q": {"status": "request"},
+            "https://www.example.com/q": {"status": "fix", "googleCanonical": "https://example.com/q"},
+            "https://example.com/r": {"status": "request"},
+            "https://example.com/r/": {"status": "request"},
+        }}
+        keep = {g2["variants"][0]["url"].rstrip("/"): g2["keep"] for g2 in g.sitemap_variants(snap)}
+        self.assertEqual(keep["https://example.com/p"], "https://example.com/p/")
+        self.assertEqual(keep["https://example.com/q"], "https://example.com/q")
+        self.assertIsNone(keep["https://example.com/r"])
 
 
 class Misc(unittest.TestCase):
