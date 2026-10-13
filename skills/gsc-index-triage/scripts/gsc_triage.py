@@ -31,6 +31,8 @@ credential only sees one).
 """
 from __future__ import annotations
 
+__version__ = "1.1.0"
+
 import argparse
 import datetime as dt
 import gzip
@@ -1437,8 +1439,9 @@ def demo_seed(sd: pathlib.Path) -> None:
 # --------------------------------------------------------------------- main
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="gsc_triage.py", description=__doc__,
+    p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     p.add_argument("--site", help="property, e.g. sc-domain:example.com or https://example.com/")
     p.add_argument("--key", help="service-account JSON key (default: $GSC_KEY, then ADC)")
     p.add_argument("--state", help="state directory (default: ~/.local/state/gsc-triage)")
